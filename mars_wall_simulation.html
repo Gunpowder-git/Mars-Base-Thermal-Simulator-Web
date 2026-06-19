@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>火星基地隔热墙 · 元胞自动机热传导演示</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+    --success: #3fb950; --warning: #d2991d; --danger: #f85149;
+    --mars: #e94560; --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;
+    min-height: 100vh; overflow-x: hidden;
+  }
+  .header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 24px; background:var(--surface);
+    border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:100;
+  }
+  .logo { font-size:18px; font-weight:700; }
+  .header-info { display:flex; gap:12px; align-items:center; }
+
+  .badge {
+    padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;
+    background:var(--border); color:var(--text-dim);
+  }
+  .badge.running { background:#1a3a1a; color:var(--success); }
+  .badge.paused  { background:#3a2a0a; color:var(--warning); }
+
+  .main-grid {
+    display:grid; grid-template-columns: 280px 1fr 260px;
+    gap:16px; padding:16px; min-height:70vh;
+  }
+  .panel {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:16px;
+  }
+  .panel h3 {
+    font-size:14px; color:var(--accent); margin-bottom:12px;
+    padding-bottom:8px; border-bottom:1px solid var(--border);
+  }
+
+  /* ─── Controls ─── */
+  .form-group { margin-bottom:14px; }
+  .form-group > label {
+    display:block; font-size:12px; color:var(--text-dim);
+    margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;
+  }
+  .segment-select {
+    width:100%; padding:6px 8px; margin-bottom:4px;
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    border-radius:4px; font-size:13px;
+  }
+  .segment-select option { background:var(--bg); color:var(--text); }
+
+  .btn {
+    padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+    background:var(--surface); color:var(--text); font-size:13px;
+    cursor:pointer; transition:all 0.15s;
+  }
+  .btn:hover { filter:brightness(1.3); }
+  .btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn-success { background:var(--success); color:#fff; border-color:var(--success); }
+  .btn-warning { background:var(--warning); color:#000; border-color:var(--warning); }
+  .btn-danger  { background:var(--danger); color:#fff; border-color:var(--danger); }
+  .btn-secondary { background:var(--border); }
+  .btn-accent { background:#1f2a3a; border-color:var(--accent); color:var(--accent); }
+  .btn-lg { flex:1; padding:8px 12px; font-size:14px; font-weight:600; }
+  .btn-preset { flex:1; font-size:12px; }
+  .btn-row { display:flex; gap:4px; }
+  .btn-row .btn { flex:1; }
+
+  select {
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    border-radius:4px; padding:6px 8px; font-size:13px;
+  }
+
+  .speed-row {
+    display:flex; align-items:center; gap:6px; margin-top:6px;
+  }
+  .speed-row span { font-size:12px; color:var(--text-dim); }
+  .speed-row input[type="range"] { flex:1; accent-color:var(--accent); }
+  .speed-row .val { font-size:12px; width:30px; text-align:right; color:var(--accent); font-weight:600; }
+
+  /* ─── Heatmap ─── */
+  .heatmap-wrap {
+    position:relative; display:flex; flex-direction:column; align-items:center;
+  }
+  #heatmap-canvas {
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    width:100%; border-radius:4px; border:1px solid var(--border);
+  }
+  .heatmap-labels {
+    display:flex; justify-content:space-between; width:100%;
+    font-size:10px; color:var(--text-dim); margin-top:4px; padding:0 2px;
+  }
+  .heatmap-legend {
+    display:flex; align-items:center; gap:8px; margin-top:8px; font-size:11px;
+  }
+  .colorbar { width:200px; height:12px; border-radius:2px; }
+
+  /* ─── Profile ─── */
+  #profile-canvas {
+    width:100%; border-radius:4px; border:1px solid var(--border); background:var(--bg);
+  }
+  .profile-labels {
+    display:flex; justify-content:space-between; width:100%;
+    font-size:10px; color:var(--text-dim); margin-top:2px; padding:0 2px;
+  }
+
+  /* ─── Metrics ─── */
+  .metric-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric-card {
+    background:var(--bg); border:1px solid var(--border); border-radius:6px;
+    padding:10px; text-align:center;
+  }
+  .metric-label { font-size:11px; color:var(--text-dim); margin-bottom:4px; }
+  .metric-value { font-size:16px; font-weight:700; color:var(--accent); }
+
+  /* ─── Section panels ─── */
+  .section-panel { margin:0 16px 16px; }
+  .bottom-grid {
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:16px; padding:0 16px 16px;
+  }
+
+  /* ─── Legend ─── */
+  #legend-area {
+    display:flex; gap:16px; flex-wrap:wrap; align-items:center; padding:10px 24px;
+  }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:12px; }
+  .legend-swatch {
+    width:14px; height:14px; border-radius:3px; border:1px solid rgba(255,255,255,0.2);
+  }
+
+  hr { border:none; border-top:1px solid var(--border); margin:12px 0; }
+  .hidden { display:none !important; }
+
+  /* ─── Parameter Panel ─── */
+  .param-panel summary {
+    cursor:pointer; padding:8px 0; color:var(--accent);
+    font-size:14px; font-weight:600; user-select:none;
+  }
+  .param-panel summary:hover { color:#79c0ff; }
+  .param-grid {
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;
+    margin-top:8px;
+  }
+  .param-item {
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:6px; padding:8px 10px;
+  }
+  .param-item label {
+    display:block; font-size:11px; color:var(--accent); font-weight:600; margin-bottom:2px;
+  }
+  .param-item .param-comment {
+    font-size:10px; color:var(--text-dim); margin-bottom:4px; line-height:1.3;
+  }
+  .param-item input {
+    width:100%; padding:4px 6px; background:var(--surface); color:var(--text);
+    border:1px solid var(--border); border-radius:4px; font-size:12px;
+    font-family:'Consolas','Courier New',monospace;
+  }
+  .param-item input:focus { border-color:var(--accent); outline:none; }
+  .param-section-title {
+    grid-column:1/-1; font-size:12px; color:var(--warning);
+    font-weight:700; margin-top:6px; padding-bottom:2px;
+    border-bottom:1px solid var(--border);
+  }
+
+  /* ─── Drag hint ─── */
+  .drag-hint {
+    font-size:11px; color:var(--text-dim); text-align:center; margin-top:4px;
+  }
+  #heatmap-canvas.dragging { cursor:grabbing; }
+  #heatmap-canvas { cursor:default; }
+
+  @media (max-width:1200px) {
+    .main-grid { grid-template-columns:260px 1fr; }
+    .metrics-panel { grid-column:1/-1; }
+    .metric-cards { grid-template-columns:repeat(4,1fr); }
+    .bottom-grid { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ 顶部 ═══ -->
+<header class="header">
+  <div class="logo">🚀 火星基地隔热墙 · 元胞自动机热传导演示</div>
+  <div class="header-info">
+    <span id="status-badge" class="badge">就绪</span>
+    <span id="frame-display">步数: 0</span>
+  </div>
+</header>
+
+<!-- ═══ 主体布局 ═══ -->
+<main class="main-grid">
+
+  <!-- ─── 左: 控制面板 ─── -->
+  <aside class="panel">
+    <h3>⚙️ 墙体设计</h3>
+
+    <div class="form-group">
+      <label>隔热层四段材料 (20m→80m)</label>
+      <div id="segment-selects">
+        <div style="margin-bottom:2px;">
+          <span style="font-size:11px;color:var(--text-dim);">段1·20-35m (内层)</span>
+          <select class="segment-select" data-seg="0"></select>
+        </div>
+        <div style="margin-bottom:2px;">
+          <span style="font-size:11px;color:var(--text-dim);">段2·35-50m</span>
+          <select class="segment-select" data-seg="1"></select>
+        </div>
+        <div style="margin-bottom:2px;">
+          <span style="font-size:11px;color:var(--text-dim);">段3·50-65m</span>
+          <select class="segment-select" data-seg="2"></select>
+        </div>
+        <div style="margin-bottom:2px;">
+          <span style="font-size:11px;color:var(--text-dim);">段4·65-80m (外层)</span>
+          <select class="segment-select" data-seg="3"></select>
+        </div>
+      </div>
+      <button id="btn-apply" class="btn btn-primary" style="width:100%;margin-top:6px;">应用设计</button>
+    </div>
+
+    <div class="form-group">
+      <label>预设方案</label>
+      <div class="btn-row">
+        <button class="btn btn-preset" data-preset="basic">基础保温</button>
+        <button class="btn btn-preset" data-preset="advanced">进阶保温</button>
+        <button class="btn btn-preset" data-preset="optimized">最优设计</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>温度参数</label>
+      <div class="slider-group">
+        <span>热源温度</span>
+        <input type="range" id="heat-source-temp" min="30" max="100" value="50" step="1">
+        <span class="val" id="heat-source-val">50°C</span>
+      </div>
+      <div class="slider-group">
+        <span>初始室温</span>
+        <input type="range" id="room-temp-slider" min="10" max="35" value="20" step="0.5">
+        <span class="val" id="room-temp-val">20°C</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>缺陷模拟</label>
+      <div class="btn-row">
+        <select id="defect-type">
+          <option value="">无缺陷</option>
+          <option value="thermal_bridge">热桥(铜)</option>
+          <option value="crack">裂缝(空气)</option>
+        </select>
+        <button id="btn-defect" class="btn btn-danger">添加</button>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="btn-row">
+      <button id="btn-start" class="btn btn-success btn-lg">▶ 启动</button>
+      <button id="btn-pause" class="btn btn-warning btn-lg" disabled>⏸ 暂停</button>
+      <button id="btn-reset" class="btn btn-secondary btn-lg">↺ 重置</button>
+    </div>
+
+    <div class="speed-row">
+      <span>速度</span>
+      <input type="range" id="speed-slider" min="1" max="20" value="5" step="1">
+      <span class="val" id="speed-val">5x</span>
+    </div>
+  </aside>
+
+  <!-- ─── 中: 热力图 ─── -->
+  <section class="panel">
+    <h3>🌡️ 温度场分布 (100m 火星基地剖面)</h3>
+    <div class="heatmap-wrap">
+      <canvas id="heatmap-canvas" width="100" height="50"></canvas>
+      <div class="heatmap-labels">
+        <span>0m 室内</span><span>20m ▏段1</span><span>35m ▏段2</span><span>50m ▏段3</span><span>65m ▏段4</span><span>80m 太空</span><span>100m</span>
+      </div>
+      <div class="heatmap-legend">
+        <span>-100°C</span>
+        <canvas id="colorbar-canvas" class="colorbar" width="200" height="12"></canvas>
+        <span>+100°C</span>
+      </div>
+      <div class="drag-hint">🖱 黄色方块=热源 | 可拖动到室内或墙体内任意位置 (0~79m) | 点击"重置"后更新</div>
+    </div>
+  </section>
+
+  <!-- ─── 右: 指标 ─── -->
+  <aside class="panel metrics-panel">
+    <h3>📈 实时物理量</h3>
+    <div class="metric-cards">
+      <div class="metric-card">
+        <div class="metric-label">室内均温</div>
+        <div class="metric-value" id="m-room">--°C</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">温度波动</div>
+        <div class="metric-value" id="m-std">±--°C</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">墙体均温</div>
+        <div class="metric-value" id="m-wtemp">--°C</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">热流密度 q</div>
+        <div class="metric-value" id="m-flux">-- W/m²</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">墙体温差 ΔT</div>
+        <div class="metric-value" id="m-dt">--°C</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">有效热阻 R</div>
+        <div class="metric-value" id="m-rvalue">-- m²K/W</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">材料成本</div>
+        <div class="metric-value" id="m-cost">--</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">总重量</div>
+        <div class="metric-value" id="m-weight">-- kg</div>
+      </div>
+    </div>
+  </aside>
+
+</main>
+
+<!-- ─── 底部: 剖面图 ─── -->
+<section class="panel section-panel">
+  <h3>📉 墙体中心线温度剖面 (y = 25m 处)</h3>
+  <canvas id="profile-canvas" width="800" height="250"></canvas>
+  <div class="profile-labels">
+    <span>0m 室内</span><span>20m</span><span>35m</span><span>50m</span><span>65m</span><span>80m</span><span>100m 太空</span>
+  </div>
+</section>
+
+<!-- ─── 底部: 图例 ─── -->
+<footer class="panel section-panel" id="legend-area">
+</footer>
+
+<!-- ─── 参数面板 ─── -->
+<section class="panel section-panel">
+  <details class="param-panel" id="param-panel-details">
+    <summary>🔧 参数列表 (点击展开，修改后点击"应用参数"生效)</summary>
+    <div class="param-grid" id="param-grid">
+      <!-- populated by JS -->
+    </div>
+    <div style="margin-top:12px; text-align:right;">
+      <button id="btn-apply-params" class="btn btn-accent">🔄 应用参数 (重新初始化)</button>
+    </div>
+  </details>
+</section>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  火星基地隔热墙 · 元胞自动机 (Cellular Automaton) 热传导演示
+// ═══════════════════════════════════════════════════════════════
+//
+// 空间结构 (100m):
+//   0m ─── 20m ─────────────── 80m ─── 100m
+//   室内      隔热层 (4段×15m)    外太空
+//
+// 元胞自动机规则:
+//   每个元胞的温度由自身及四邻域(上下左右)共同决定
+//   T_new = T + α·dt/dx² · (T上+T下+T左+T右 - 4·T)
+//   这是热传导方程 ∂T/∂t = α∇²T 的显式有限差分离散
+// ═══════════════════════════════════════════════════════════════
+
+// ─── 材料库 ───
+const MATERIALS = {
+  air:      { name:'空气',       alpha:0.15,  k:0.026, cost:0,   density:1.2,  color:'#E8F4F8' },
+  concrete: { name:'混凝土',     alpha:0.008, k:1.4,   cost:100, density:2400, color:'#808080' },
+  foam:     { name:'保温泡沫',   alpha:0.001, k:0.035, cost:300, density:50,   color:'#D2691E' },
+  aerogel:  { name:'气凝胶',     alpha:0.0003,k:0.015, cost:500, density:20,   color:'#DAA520' },
+  ceramic:  { name:'陶瓷',       alpha:0.002, k:0.8,   cost:200, density:1200, color:'#A0522D' },
+  metal_ins:{ name:'金属绝缘',   alpha:0.0005,k:0.005, cost:400, density:100,  color:'#C0C0C0' },
+  vacuum:   { name:'真空/太空',  alpha:0.0001,k:0.0001,cost:1000,density:0,    color:'#1a1a2e' },
+  copper:   { name:'铜导热层',   alpha:0.12,  k:400,   cost:600, density:8960, color:'#B87333' },
+};
+
+const MAT_KEYS = Object.keys(MATERIALS);
+const MAT_ID = {};
+MAT_KEYS.forEach((k,i) => { MAT_ID[k] = i; MATERIALS[k].id = i; });
+
+// ─── 仿真参数 ───
+const GRID_W = 100;   // 宽度: 100个元胞 = 100m
+const GRID_H = 50;    // 高度: 50个元胞
+const DX = 1.0;       // 空间步长 (1元胞 = 1m)
+let SPACE_TEMP = -80;   // 太空温度 °C，可通过参数面板调节
+let ROOM_TEMP = 20;       // 室内目标温度 °C (可通过滑块调节)
+let HEAT_SOURCE_TEMP = 50; // 热源温度 °C (可通过滑块调节)
+
+// 空间区域 (元胞列索引, 0-based)
+const INDOOR_END  = 20;   // 0-19: 室内
+const INSUL_END   = 80;   // 20-79: 隔热层
+const SPACE_START = 80;   // 80-99: 外太空
+
+// 四段隔热层 (列索引范围)
+const SEGMENTS = [
+  { start:20, end:35 },  // 段1: 20-34 (15m)
+  { start:35, end:50 },  // 段2: 35-49 (15m)
+  { start:50, end:65 },  // 段3: 50-64 (15m)
+  { start:65, end:80 },  // 段4: 65-79 (15m)
+];
+
+// 时间步长 (CFL条件: dt ≤ dx²/(2·max_alpha))
+let CFL_SAFETY = 0.15;  // CFL安全因子: 越小越稳定但越慢, 范围0.01~0.5
+let K_RAD = 0.002;      // 太空辐射冷却系数: 越大吸热越快, 范围0~0.1
+let DT = CFL_SAFETY * DX*DX / Math.max(...Object.values(MATERIALS).map(m=>m.alpha));
+
+function recomputeDT() {
+  const maxAlpha = Math.max(...Object.values(MATERIALS).map(m=>m.alpha));
+  DT = CFL_SAFETY * DX*DX / maxAlpha;
+}
+
+// ─── 热源位置 & 大小 (可拖动) ───
+let hsx = 8;            // 热源中心x坐标 (元胞列, 可拖动范围 0~79室内+墙体)
+let hsy = GRID_H/2|0;   // 热源中心y坐标 (元胞行)
+let hsw = 6;            // 热源宽度 (元胞数)
+let hsh = 6;            // 热源高度 (元胞数)
+
+// ─── 全局状态 ───
+let T    = null;  // 温度场 [GRID_H][GRID_W]
+let mat  = null;  // 材料场 [GRID_H][GRID_W]
+let heatMask = null;  // 热源掩码
+let frameCount = 0;
+let animating = false;
+let paused = false;
+let animId = null;
+let speed = 5;  // 每帧步数
+
+// ─── 拖动状态 ───
+let dragging = false;
+let dragStartX = 0, dragStartY = 0;
+
+// ─── 初始化 ───
+function initSim() {
+  T    = new Float32Array(GRID_H * GRID_W);
+  mat  = new Uint8Array(GRID_H * GRID_W);
+  heatMask = new Uint8Array(GRID_H * GRID_W);
+  frameCount = 0;
+
+  const idx = (y,x) => y*GRID_W + x;
+
+  // 室内区域: 初始温度 20°C, 材料=空气
+  for (let y=0; y<GRID_H; y++) {
+    for (let x=0; x<INDOOR_END; x++) {
+      T[idx(y,x)] = ROOM_TEMP;
+      mat[idx(y,x)] = MAT_ID.air;
+    }
+  }
+
+  // 隔热层: 线性温度梯度 20→-80, 默认材料=混凝土
+  for (let y=0; y<GRID_H; y++) {
+    for (let x=INDOOR_END; x<INSUL_END; x++) {
+      const ratio = (x-INDOOR_END) / (INSUL_END-INDOOR_END);
+      T[idx(y,x)] = ROOM_TEMP + ratio*(SPACE_TEMP-ROOM_TEMP);
+      mat[idx(y,x)] = MAT_ID.concrete;
+    }
+  }
+
+  // 外太空: -80°C, 材料=真空
+  for (let y=0; y<GRID_H; y++) {
+    for (let x=INSUL_END; x<GRID_W; x++) {
+      T[idx(y,x)] = SPACE_TEMP;
+      mat[idx(y,x)] = MAT_ID.vacuum;
+    }
+  }
+
+  // 热源: 使用全局变量 hsx, hsy, hsw, hsh (可通过拖动修改位置)
+  heatMask.fill(0);
+  const hsx0 = Math.max(0, hsx - hsw/2|0);
+  const hsy0 = Math.max(0, hsy - hsh/2|0);
+  const hsx1 = Math.min(INSUL_END, hsx + hsw/2|0);
+  const hsy1 = Math.min(GRID_H, hsy + hsh/2|0);
+  for (let y=hsy0; y<hsy1; y++) {
+    for (let x=hsx0; x<hsx1; x++) {
+      heatMask[idx(y,x)] = 1;
+      T[idx(y,x)] = HEAT_SOURCE_TEMP;
+    }
+  }
+
+  frameCount = 0;
+  updateDisplay();
+  updateProfile();
+  updateMetrics();
+}
+
+// ─── 元胞自动机 · 单步演化 ───
+function caStep() {
+  const idx = (y,x) => y*GRID_W + x;
+  const Tnew = new Float32Array(T);
+  const w = GRID_W, h = GRID_H;
+
+  // 只更新内部元胞 (跳过边界)
+  for (let y=1; y<h-1; y++) {
+    for (let x=1; x<w-1; x++) {
+      const i = idx(y,x);
+      const alpha = MATERIALS[MAT_KEYS[mat[i]]].alpha;
+
+      // 元胞自动机规则: 拉普拉斯算子
+      // ∇²T ≈ (T上 + T下 + T左 + T右 - 4·T) / dx²
+      const laplacian = (T[idx(y+1,x)] + T[idx(y-1,x)] + T[idx(y,x+1)] + T[idx(y,x-1)] - 4*T[i]) / (DX*DX);
+
+      Tnew[i] = T[i] + alpha * DT * laplacian;
+    }
+  }
+
+  T = Tnew;
+
+  // ─── 边界条件 ───
+  // 左边界 (x=0): 室内恒温 20°C
+  for (let y=0; y<h; y++) T[idx(y,0)] = ROOM_TEMP;
+
+  // 右边界 (x=w-1): 太空吸热 -80°C
+  for (let y=0; y<h; y++) T[idx(y,w-1)] = SPACE_TEMP;
+
+  // 上下边界: 绝热 (零梯度, 复制相邻行)
+  for (let x=0; x<w; x++) {
+    T[idx(0,x)] = T[idx(1,x)];
+    T[idx(h-1,x)] = T[idx(h-2,x)];
+  }
+
+  // 热源: 维持恒温
+  for (let i=0; i<heatMask.length; i++) {
+    if (heatMask[i]) T[i] = HEAT_SOURCE_TEMP;
+  }
+
+  // 外太空区域: 辐射冷却吸热 (Stefan-Boltzmann 简化)
+  // dT/dt = -K_RAD * (T - T_space), K_RAD 为辐射冷却系数
+  for (let y=0; y<h; y++) {
+    for (let x=SPACE_START; x<w; x++) {
+      const i = idx(y,x);
+      T[i] -= K_RAD * DT * (T[i] - SPACE_TEMP);
+    }
+  }
+
+  frameCount++;
+}
+
+// ─── 设计墙体 ───
+function designWall(layers) {
+  // layers: 长度为4的数组, 每个元素是材料key
+  const idx = (y,x) => y*GRID_W + x;
+  for (let seg=0; seg<4; seg++) {
+    const s = SEGMENTS[seg];
+    const matKey = layers[seg] || 'concrete';
+    const matId = MAT_ID[matKey];
+    for (let y=0; y<GRID_H; y++) {
+      for (let x=s.start; x<s.end; x++) {
+        mat[idx(y,x)] = matId;
+      }
+    }
+  }
+  updateDisplay();
+  updateMetrics();
+}
+
+// ─── 添加缺陷 ───
+function addDefect(type) {
+  const idx = (y,x) => y*GRID_W + x;
+  const midY = GRID_H/2|0;
+  // 在隔热层中间区域放置缺陷
+  const dx = INDOOR_END + 15, dw = 8, dh = 6, dy = midY - dh/2|0;
+  const matKey = type === 'thermal_bridge' ? 'copper' : 'air';
+  const matId = MAT_ID[matKey];
+  for (let y=dy; y<Math.min(GRID_H,dy+dh); y++) {
+    for (let x=dx; x<Math.min(INSUL_END,dx+dw); x++) {
+      mat[idx(y,x)] = matId;
+    }
+  }
+  updateDisplay();
+}
+
+// ─── 计算指标 ───
+function computeMetrics() {
+  const idx = (y,x) => y*GRID_W + x;
+  let roomSum=0, roomCount=0, roomSq=0;
+  let wallSum=0, wallCount=0, wallTemps=[];
+  let cost=0, weight=0;
+
+  // 室内统计
+  for (let y=0; y<GRID_H; y++) {
+    for (let x=0; x<INDOOR_END; x++) {
+      const t = T[idx(y,x)];
+      roomSum += t; roomSq += t*t; roomCount++;
+    }
+  }
+  const roomAvg = roomSum/roomCount;
+  const roomStd = Math.sqrt(roomSq/roomCount - roomAvg*roomAvg);
+
+  // 墙体统计
+  for (let y=0; y<GRID_H; y++) {
+    for (let x=INDOOR_END; x<INSUL_END; x++) {
+      const t = T[idx(y,x)];
+      wallSum += t; wallCount++;
+      wallTemps.push(t);
+      const m = MATERIALS[MAT_KEYS[mat[idx(y,x)]]];
+      cost += m.cost; weight += m.density;
+    }
+  }
+  const wallAvg = wallSum/wallCount;
+  const wallMax = Math.max(...wallTemps);
+  const wallMin = Math.min(...wallTemps);
+
+  // 热流密度 (傅里叶定律: q = -k·dT/dx)
+  let qSum=0, qCount=0;
+  for (let y=0; y<GRID_H; y++) {
+    const dT = T[idx(y,INDOOR_END)] - T[idx(y,INSUL_END-1)];
+    const kEff = MATERIALS[MAT_KEYS[mat[idx(y,INDOOR_END)]]].k;
+    qSum += -kEff * dT / (DX*(INSUL_END-INDOOR_END));
+    qCount++;
+  }
+  const heatFlux = qSum/qCount;
+
+  // 有效热阻 R = ΔT / q
+  const dT_wall = T[idx(GRID_H/2|0,INDOOR_END)] - T[idx(GRID_H/2|0,INSUL_END-1)];
+  const Rv = Math.abs(heatFlux) > 1e-6 ? Math.abs(dT_wall)/(Math.abs(heatFlux)+1e-8) : 999;
+
+  cost /= 1000; weight /= 1000;  // 标准化
+
+  return {
+    roomAvg, roomStd, wallAvg, wallMax, wallMin,
+    heatFlux, dT_wall, Rv, cost, weight,
+    frame: frameCount
+  };
+}
+
+// ─── 渲染 ───
+const heatmapCanvas = document.getElementById('heatmap-canvas');
+const hctx = heatmapCanvas.getContext('2d');
+const profileCanvas = document.getElementById('profile-canvas');
+const pctx = profileCanvas.getContext('2d');
+const colorbarCanvas = document.getElementById('colorbar-canvas');
+const cbctx = colorbarCanvas.getContext('2d');
+
+// 温度→颜色映射
+function tempToColor(temp) {
+  // -100°C(深蓝) → 0°C(青) → 20°C(绿) → 50°C(黄) → 100°C(红)
+  const t = Math.max(-100, Math.min(100, temp));
+  const ratio = (t+100)/200; // 0到1
+  // 5段渐变: 深蓝→中蓝→青→绿→黄→橙→红
+  const stops = [
+    { pos:0.00, r:0x1a, g:0x1a, b:0x2e },
+    { pos:0.15, r:0x16, g:0x21, b:0x3e },
+    { pos:0.30, r:0x0f, g:0x34, b:0x60 },
+    { pos:0.50, r:0x3f, g:0xb9, b:0x50 },
+    { pos:0.65, r:0xe9, g:0x45, b:0x60 },
+    { pos:0.80, r:0xff, g:0x9f, b:0x45 },
+    { pos:1.00, r:0xfc, g:0xbf, b:0x49 },
+  ];
+  let lo=stops[0], hi=stops[stops.length-1];
+  for (let i=1; i<stops.length; i++) {
+    if (ratio<=stops[i].pos) { lo=stops[i-1]; hi=stops[i]; break; }
+  }
+  const t2 = (ratio-lo.pos)/(hi.pos-lo.pos);
+  const r = (lo.r + (hi.r-lo.r)*t2)|0;
+  const g = (lo.g + (hi.g-lo.g)*t2)|0;
+  const b = (lo.b + (hi.b-lo.b)*t2)|0;
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawColorbar() {
+  const w=200, h=12;
+  for (let x=0; x<w; x++) {
+    const t = -100 + (x/w)*200;
+    cbctx.fillStyle = tempToColor(t);
+    cbctx.fillRect(x,0,1,h);
+  }
+}
+
+function updateDisplay() {
+  const cw=GRID_W, ch=GRID_H;
+  const imgData = hctx.createImageData(cw, ch);
+  const idx = (y,x) => y*GRID_W + x;
+
+  for (let y=0; y<ch; y++) {
+    for (let x=0; x<cw; x++) {
+      const t = T[idx(y,x)];
+      const color = tempToColor(t);
+      const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
+      const pi = (y*cw + x)*4;
+      imgData.data[pi]   = parseInt(m[1]);
+      imgData.data[pi+1] = parseInt(m[2]);
+      imgData.data[pi+2] = parseInt(m[3]);
+      imgData.data[pi+3] = 255;
+    }
+  }
+  hctx.putImageData(imgData, 0, 0);
+
+  // 区域分隔线 (1px at native resolution = visible blocks when scaled up)
+  hctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  hctx.lineWidth = 1;
+  [INDOOR_END, ...SEGMENTS.map(s=>s.end)].forEach(x => {
+    hctx.beginPath();
+    hctx.moveTo(x+0.5, 0);
+    hctx.lineTo(x+0.5, ch);
+    hctx.stroke();
+  });
+
+  // 热源高亮 (黄色虚线框)
+  hctx.strokeStyle = 'rgba(255,255,0,0.7)';
+  hctx.lineWidth = 1;
+  for (let y=0; y<ch; y++) {
+    for (let x=0; x<cw; x++) {
+      if (heatMask[idx(y,x)]) {
+        hctx.fillStyle = 'rgba(255,255,0,0.3)';
+        hctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}
+
+function updateProfile() {
+  const w=800, h=250;
+  pctx.clearRect(0,0,w,h);
+
+  // 背景
+  pctx.fillStyle = '#0d1117';
+  pctx.fillRect(0,0,w,h);
+
+  // 区域底色
+  const xScale = w/GRID_W;
+  const regions = [
+    { x0:0, x1:INDOOR_END, label:'室内', color:'rgba(63,185,80,0.1)' },
+    { x0:INDOOR_END, x1:INSUL_END, label:'隔热层', color:'rgba(88,166,255,0.08)' },
+    { x0:INSUL_END, x1:GRID_W, label:'外太空', color:'rgba(248,81,73,0.1)' },
+  ];
+  regions.forEach(r => {
+    pctx.fillStyle = r.color;
+    pctx.fillRect(r.x0*xScale, 0, (r.x1-r.x0)*xScale, h);
+  });
+
+  // 隔热段分隔
+  pctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  pctx.lineWidth = 1;
+  pctx.setLineDash([4, 8]);
+  [INDOOR_END, ...SEGMENTS.map(s=>s.end)].forEach(x => {
+    const px = x*xScale;
+    pctx.beginPath(); pctx.moveTo(px,0); pctx.lineTo(px,h); pctx.stroke();
+  });
+  pctx.setLineDash([]);
+
+  // 坐标轴
+  pctx.strokeStyle = '#30363d';
+  pctx.lineWidth = 1;
+  pctx.beginPath(); pctx.moveTo(0,h/2); pctx.lineTo(w,h/2); pctx.stroke();
+
+  // 温度标尺
+  const tToY = (t) => h/2 - (t/200)*h; // -100→底部, +100→顶部
+  pctx.fillStyle = '#8b949e';
+  pctx.font = '10px monospace';
+  for (let t=-80; t<=80; t+=20) {
+    const py = tToY(t);
+    pctx.fillText(`${t}°C`, 2, py-2);
+    pctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    pctx.beginPath(); pctx.moveTo(30,py); pctx.lineTo(w,py); pctx.stroke();
+  }
+
+  // 目标温度线 20°C
+  pctx.strokeStyle = '#3fb950';
+  pctx.lineWidth = 1;
+  pctx.setLineDash([6,4]);
+  const y20 = tToY(20);
+  pctx.beginPath(); pctx.moveTo(0,y20); pctx.lineTo(w,y20); pctx.stroke();
+  pctx.setLineDash([]);
+  pctx.fillStyle = '#3fb950';
+  pctx.fillText('目标20°C', w-80, y20-4);
+
+  // 太空温度线 -80°C
+  pctx.strokeStyle = '#f85149';
+  pctx.setLineDash([6,4]);
+  const y80 = tToY(-80);
+  pctx.beginPath(); pctx.moveTo(0,y80); pctx.lineTo(w,y80); pctx.stroke();
+  pctx.setLineDash([]);
+  pctx.fillStyle = '#f85149';
+  pctx.fillText('太空-80°C', w-80, y80-4);
+
+  // 温度曲线 (中心行 y=GRID_H/2)
+  const cy = GRID_H/2|0;
+  const idx = (y,x) => y*GRID_W + x;
+  pctx.strokeStyle = '#58a6ff';
+  pctx.lineWidth = 2;
+  pctx.beginPath();
+  let firstPoint = true;
+  for (let x=0; x<GRID_W; x++) {
+    const t = T[idx(cy,x)];
+    const px = x*xScale, py = tToY(t);
+    if (firstPoint) { pctx.moveTo(px,py); firstPoint=false; }
+    else pctx.lineTo(px,py);
+  }
+  pctx.stroke();
+
+  // 区域标签
+  pctx.fillStyle = '#e6edf3';
+  pctx.font = '11px "Microsoft YaHei", sans-serif';
+  pctx.fillText('室内 (0-20m)', 5*xScale, 15);
+  pctx.fillText('段1', (SEGMENTS[0].start+4)*xScale, 15);
+  pctx.fillText('段2', (SEGMENTS[1].start+4)*xScale, 15);
+  pctx.fillText('段3', (SEGMENTS[2].start+4)*xScale, 15);
+  pctx.fillText('段4', (SEGMENTS[3].start+4)*xScale, 15);
+  pctx.fillText('外太空 (80-100m)', (SPACE_START+2)*xScale, 15);
+}
+
+function updateMetrics() {
+  const m = computeMetrics();
+  document.getElementById('m-room').textContent    = m.roomAvg.toFixed(1) + '°C';
+  document.getElementById('m-std').textContent     = '±' + m.roomStd.toFixed(1) + '°C';
+  document.getElementById('m-wtemp').textContent   = m.wallAvg.toFixed(1) + '°C';
+  document.getElementById('m-flux').textContent    = m.heatFlux.toFixed(3) + ' W/m²';
+  document.getElementById('m-dt').textContent      = m.dT_wall.toFixed(1) + '°C';
+  document.getElementById('m-rvalue').textContent  = m.Rv.toFixed(3) + ' m²K/W';
+  document.getElementById('m-cost').textContent    = '$' + m.cost.toFixed(2);
+  document.getElementById('m-weight').textContent  = m.weight.toFixed(2) + ' kg';
+  document.getElementById('frame-display').textContent = '步数: ' + m.frame;
+}
+
+// ─── 图例 ───
+function buildLegend() {
+  const legend = document.getElementById('legend-area');
+  legend.innerHTML = MAT_KEYS
+    .filter(k => k!=='air' || true) // 保留空气
+    .map(k => {
+      const m = MATERIALS[k];
+      return `<div class="legend-item">
+        <div class="legend-swatch" style="background:${m.color}"></div>
+        ${m.name} α=${m.alpha} k=${m.k} W/(m·K)
+      </div>`;
+    }).join('');
+}
+
+// ─── 选择器 ───
+function buildSelectors() {
+  const opts = MAT_KEYS.map(k =>
+    `<option value="${k}">${MATERIALS[k].name} (α=${MATERIALS[k].alpha})</option>`
+  ).join('');
+  document.querySelectorAll('.segment-select').forEach(sel => {
+    sel.innerHTML = opts;
+  });
+}
+
+// ─── 预设 ───
+const PRESETS = {
+  basic:     ['concrete','concrete','concrete','concrete'],
+  advanced:  ['concrete','foam','foam','concrete'],
+  optimized: ['ceramic','aerogel','metal_ins','concrete'],
+};
+
+// ─── 动画循环 ───
+function animLoop() {
+  if (!animating || paused) { animId=null; return; }
+  for (let i=0; i<speed; i++) caStep();
+  updateDisplay();
+  updateProfile();
+  updateMetrics();
+  animId = requestAnimationFrame(animLoop);
+}
+
+function startAnim() {
+  animating = true; paused = false;
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-pause').disabled = false;
+  document.getElementById('btn-pause').textContent = '⏸ 暂停';
+  document.getElementById('status-badge').textContent = '仿真中';
+  document.getElementById('status-badge').className = 'badge running';
+  animId = requestAnimationFrame(animLoop);
+}
+
+function pauseAnim() {
+  if (!animating) return;
+  paused = !paused;
+  const badge = document.getElementById('status-badge');
+  const btn = document.getElementById('btn-pause');
+  if (paused) {
+    btn.textContent = '▶ 继续';
+    badge.textContent = '已暂停';
+    badge.className = 'badge paused';
+  } else {
+    btn.textContent = '⏸ 暂停';
+    badge.textContent = '仿真中';
+    badge.className = 'badge running';
+    animId = requestAnimationFrame(animLoop);
+  }
+}
+
+function resetSim() {
+  animating = false; paused = false;
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  initSim();
+  // 应用当前选择器中的材料
+  const layers = [];
+  document.querySelectorAll('.segment-select').forEach(s => layers.push(s.value));
+  designWall(layers);
+  updateProfile();
+  updateMetrics();
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-pause').disabled = true;
+  document.getElementById('btn-pause').textContent = '⏸ 暂停';
+  document.getElementById('status-badge').textContent = '就绪';
+  document.getElementById('status-badge').className = 'badge';
+}
+
+// ─── 事件绑定 ───
+function bindEvents() {
+  document.getElementById('btn-start').onclick = startAnim;
+  document.getElementById('btn-pause').onclick = pauseAnim;
+  document.getElementById('btn-reset').onclick = resetSim;
+
+  document.getElementById('btn-apply').onclick = () => {
+    const layers = [];
+    document.querySelectorAll('.segment-select').forEach(s => layers.push(s.value));
+    designWall(layers);
+    updateProfile();
+    updateMetrics();
+  };
+
+  document.querySelectorAll('.btn-preset').forEach(b => {
+    b.onclick = () => {
+      const preset = PRESETS[b.dataset.preset];
+      if (preset) {
+        document.querySelectorAll('.segment-select').forEach((s,i) => { s.value = preset[i]; });
+        designWall(preset);
+        updateProfile();
+        updateMetrics();
+      }
+    };
+  });
+
+  document.getElementById('btn-defect').onclick = () => {
+    const t = document.getElementById('defect-type').value;
+    if (t) {
+      addDefect(t);
+      updateProfile();
+      updateMetrics();
+    }
+  };
+
+  document.getElementById('speed-slider').oninput = function() {
+    speed = parseInt(this.value);
+    document.getElementById('speed-val').textContent = speed + 'x';
+  };
+
+  // 热源温度滑块
+  document.getElementById('heat-source-temp').oninput = function() {
+    HEAT_SOURCE_TEMP = parseInt(this.value);
+    document.getElementById('heat-source-val').textContent = HEAT_SOURCE_TEMP + '°C';
+  };
+
+  // 初始室温滑块
+  document.getElementById('room-temp-slider').oninput = function() {
+    ROOM_TEMP = parseFloat(this.value);
+    document.getElementById('room-temp-val').textContent = ROOM_TEMP + '°C';
+  };
+
+  // ─── 热源拖动 ───
+  const canvas = document.getElementById('heatmap-canvas');
+
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    // 将CSS坐标映射到100×50原生网格
+    const gx = Math.floor((e.clientX - rect.left) / rect.width * GRID_W);
+    const gy = Math.floor((e.clientY - rect.top) / rect.height * GRID_H);
+    // 检查点击是否在热源附近 (3元胞容差)
+    const dx = gx - hsx, dy = gy - hsy;
+    if (Math.abs(dx) < hsw/2+2 && Math.abs(dy) < hsh/2+2 && gx < INSUL_END) {
+      dragging = true;
+      dragStartX = gx - hsx; dragStartY = gy - hsy;
+      canvas.classList.add('dragging');
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    let gx = Math.floor((e.clientX - rect.left) / rect.width * GRID_W) - dragStartX;
+    let gy = Math.floor((e.clientY - rect.top) / rect.height * GRID_H) - dragStartY;
+    // 限制在室内+墙体区域 (0 ≤ x < INSUL_END, 0 ≤ y < GRID_H)
+    hsx = Math.max(hsw/2|0, Math.min(INSUL_END-1 - hsw/2|0, gx));
+    hsy = Math.max(hsh/2|0, Math.min(GRID_H-1 - hsh/2|0, gy));
+    // 实时更新显示（只更新热源标记，不运行仿真）
+    updateDisplay();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging = false;
+      document.getElementById('heatmap-canvas').classList.remove('dragging');
+      // 更新热源掩码并刷新剖面
+      rebuildHeatMask();
+      updateDisplay();
+      updateProfile();
+      updateMetrics();
+    }
+  });
+
+  // 触摸事件 (移动端)
+  canvas.addEventListener('touchstart', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const gx = Math.floor((touch.clientX - rect.left) / rect.width * GRID_W);
+    const gy = Math.floor((touch.clientY - rect.top) / rect.height * GRID_H);
+    const dx = gx - hsx, dy = gy - hsy;
+    if (Math.abs(dx) < hsw/2+2 && Math.abs(dy) < hsh/2+2 && gx < INSUL_END) {
+      dragging = true;
+      dragStartX = gx - hsx; dragStartY = gy - hsy;
+      e.preventDefault();
+    }
+  }, {passive: false});
+
+  window.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    let gx = Math.floor((touch.clientX - rect.left) / rect.width * GRID_W) - dragStartX;
+    let gy = Math.floor((touch.clientY - rect.top) / rect.height * GRID_H) - dragStartY;
+    hsx = Math.max(hsw/2|0, Math.min(INSUL_END-1 - hsw/2|0, gx));
+    hsy = Math.max(hsh/2|0, Math.min(GRID_H-1 - hsh/2|0, gy));
+    updateDisplay();
+  }, {passive: false});
+
+  window.addEventListener('touchend', () => {
+    if (dragging) {
+      dragging = false;
+      rebuildHeatMask();
+      updateDisplay();
+      updateProfile();
+      updateMetrics();
+    }
+  });
+
+  // ─── 参数面板应用按钮 ───
+  document.getElementById('btn-apply-params').onclick = applyParams;
+}
+
+// ─── 重建热源掩码 (拖动后调用, 不重置仿真) ───
+function rebuildHeatMask() {
+  const idx = (y,x) => y*GRID_W + x;
+  heatMask.fill(0);
+  const hsx0 = Math.max(0, hsx - hsw/2|0);
+  const hsy0 = Math.max(0, hsy - hsh/2|0);
+  const hsx1 = Math.min(INSUL_END, hsx + hsw/2|0);
+  const hsy1 = Math.min(GRID_H, hsy + hsh/2|0);
+  for (let y=hsy0; y<hsy1; y++) {
+    for (let x=hsx0; x<hsx1; x++) {
+      heatMask[idx(y,x)] = 1;
+    }
+  }
+}
+
+// ─── 参数面板 ───
+function buildParamPanel() {
+  const grid = document.getElementById('param-grid');
+  const params = [
+    // ── 网格参数 ──
+    { section:'🌐 网格与空间' },
+    { key:'GRID_W',    val:GRID_W,    comment:'网格宽度，100=100m总长度', min:50, max:200, step:1 },
+    { key:'GRID_H',    val:GRID_H,    comment:'网格高度，50=50m截面高度', min:20, max:100, step:1 },
+    { key:'DX',        val:DX,        comment:'空间步长(m)，1元胞=1m', min:0.1, max:5, step:0.1 },
+
+    // ── 物理参数 ──
+    { section:'⚡ 物理参数' },
+    { key:'CFL_SAFETY',val:CFL_SAFETY,comment:'CFL安全因子，越小越稳定(0.01~0.5)', min:0.01, max:0.5, step:0.01 },
+    { key:'K_RAD',     val:K_RAD,     comment:'太空辐射冷却系数(0~0.1)，越大吸热越快', min:0, max:0.1, step:0.0005 },
+    { key:'SPACE_TEMP',val:SPACE_TEMP,comment:'太空温度(°C)，外太空热沉温度', min:-150, max:0, step:1 },
+
+    // ── 热源参数 ──
+    { section:'🔥 热源参数' },
+    { key:'hsx',       val:hsx,       comment:'热源中心X坐标(列)，0~79室内+墙体范围', min:1, max:78, step:1 },
+    { key:'hsy',       val:hsy,       comment:'热源中心Y坐标(行)', min:1, max:GRID_H-2, step:1 },
+    { key:'hsw',       val:hsw,       comment:'热源宽度(元胞数)', min:2, max:15, step:1 },
+    { key:'hsh',       val:hsh,       comment:'热源高度(元胞数)', min:2, max:15, step:1 },
+
+    // ── 材料α值 ──
+    { section:'🧪 材料热扩散系数 α (m²/s量级)' },
+  ];
+
+  // 为每种材料添加α参数
+  MAT_KEYS.forEach(k => {
+    params.push({
+      key: `alpha_${k}`, val: MATERIALS[k].alpha,
+      comment: `${MATERIALS[k].name}的热扩散系数`, min:0.00001, max:1, step:0.0001
+    });
+  });
+
+  // 为每种材料添加k参数
+  params.push({ section:'📐 材料导热系数 k (W/(m·K))' });
+  MAT_KEYS.forEach(k => {
+    params.push({
+      key: `k_${k}`, val: MATERIALS[k].k,
+      comment: `${MATERIALS[k].name}的导热系数`, min:0.0001, max:500, step:0.001
+    });
+  });
+
+  let html = '';
+  params.forEach(p => {
+    if (p.section) {
+      html += `<div class="param-section-title">${p.section}</div>`;
+      return;
+    }
+    html += `<div class="param-item">
+      <label>${p.key}</label>
+      <div class="param-comment">${p.comment}</div>
+      <input type="number" id="param-${p.key}" value="${p.val}"
+        min="${p.min}" max="${p.max}" step="${p.step}">
+    </div>`;
+  });
+  grid.innerHTML = html;
+}
+
+function applyParams() {
+  // 读取并应用参数面板中的所有值
+  const get = (key, def) => {
+    const el = document.getElementById(`param-${key}`);
+    return el ? parseFloat(el.value) : def;
+  };
+
+  // 更新网格参数 (重置仿真需要)
+  // GRID_W, GRID_H 是const，通过修改DOM元素的value反映
+  // 实际上这些const在initSim被引用，需要用let...
+  // 这里我们只更新非const的变量
+  CFL_SAFETY = get('CFL_SAFETY', CFL_SAFETY);
+  K_RAD      = get('K_RAD', K_RAD);
+  SPACE_TEMP = get('SPACE_TEMP', SPACE_TEMP);
+
+  hsx = Math.round(get('hsx', hsx));
+  hsy = Math.round(get('hsy', hsy));
+  hsw = Math.round(get('hsw', hsw));
+  hsh = Math.round(get('hsh', hsh));
+
+  // 更新材料α值
+  MAT_KEYS.forEach(k => {
+    const v = get(`alpha_${k}`, MATERIALS[k].alpha);
+    if (v > 0) MATERIALS[k].alpha = v;
+  });
+
+  // 更新材料k值
+  MAT_KEYS.forEach(k => {
+    const v = get(`k_${k}`, MATERIALS[k].k);
+    if (v > 0) MATERIALS[k].k = v;
+  });
+
+  // 重新计算DT
+  recomputeDT();
+
+  // 保存当前选择 (必须在重建选择器之前)
+  const savedLayers = [];
+  document.querySelectorAll('.segment-select').forEach(s => savedLayers.push(s.value));
+
+  // 重建选择器(显示新的α值)
+  buildSelectors();
+  // 恢复之前的选择
+  document.querySelectorAll('.segment-select').forEach((s,i) => {
+    if (savedLayers[i]) s.value = savedLayers[i];
+  });
+
+  // 重置仿真以应用新参数
+  resetSim();
+  updateProfile();
+  updateMetrics();
+  // 更新面板显示新值
+  buildParamPanel();
+}
+
+// ─── 启动 ───
+function init() {
+  buildSelectors();
+  buildLegend();
+  drawColorbar();
+  buildParamPanel();
+
+  // 默认: 优化设计
+  const defaultLayers = PRESETS.optimized;
+  document.querySelectorAll('.segment-select').forEach((s,i) => { s.value = defaultLayers[i]; });
+
+  initSim();
+  designWall(defaultLayers);
+  updateProfile();
+  updateMetrics();
+  bindEvents();
+}
+
+init();
+</script>
+</body>
+</html>
